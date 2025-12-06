@@ -131,6 +131,26 @@ module top(
             default: seg = 7'b1111111; // blank
         endcase
     end
+    
+    // Probe signals
+    logic [11:0] ila_probe0; // adc_value
+    logic        ila_probe1; // xadc_drdy
+    logic [9:0]  ila_probe2; // scaled_value
+    logic [1:0]  ila_probe3; // digit_select
+    
+    assign ila_probe0 = adc_value;
+    assign ila_probe1 = xadc_drdy;
+    assign ila_probe2 = scaled_value;
+    assign ila_probe3 = digit_select;
+    
+    // ILA instance (This must match your regenerated ILA core)
+    ila_xadc u_ila (
+        .clk(clk),          // ILA clock input
+        .probe0(ila_probe0), // 12-bit ADC value
+        .probe1(ila_probe1), // Data Ready flag
+        .probe2(ila_probe2), // Scaled value (0-999)
+        .probe3(ila_probe3)  // Digit Selector
+    );
 
 endmodule
 
