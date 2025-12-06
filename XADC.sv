@@ -3,7 +3,7 @@
 // Company: 
 // Engineer: 
 // 
-// Create Date: 12/05/2025 12:32:14 PM
+// Create Date: 12/06/2025 11:55:54 PM
 // Design Name: 
 // Module Name: XADC
 // Project Name: 
@@ -20,12 +20,12 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module top(
-    input  logic clk,            // 100 MHz clock
-    input  logic vauxp6,         // VAUX4 analog inputs
-    input  logic vauxn6,
-    output logic [6:0] seg,      // seven segment segments
-    output logic [3:0] an        // anode control
+module XADC(
+    input  logic clk,              // 100 MHz clock
+    input  logic vauxp14,          // VAUX14 analog input
+    input  logic vauxn14,
+    output logic [6:0] seg,        // seven segment segments
+    output logic [3:0] an          // anode control
 );
 
     // ============================================================
@@ -34,13 +34,13 @@ module top(
     logic [15:0] xadc_do;
     logic        xadc_drdy;
 
-    // XADC instantiation
+    // XADC instantiation for VAUX14
     xadc_wiz_0 XADC_inst (
         .dclk_in(clk),
         .reset_in(1'b0),
-        .vauxp6(vauxp6),
-        .vauxn6(vauxn6),
-        .daddr_in(8'h16),   // Address for VAUX4
+        .vauxp14(vauxp14),
+        .vauxn14(vauxn14),
+        .daddr_in(8'h1E),     // Correct address for VAUX14
         .den_in(1'b1),
         .dwe_in(1'b0),
         .di_in(16'b0),
@@ -59,9 +59,23 @@ module top(
     end
 
     // ============================================================
-    // 3. Scale 12-bit ADC (0-4095) to 0-999 for display
+    // 3. DSP ECHO MODULE
     // ============================================================
-    // (adc_value / 4095) * 999
+    logic [11:0] echo_sample;
+
+    dsp_echo #(
+        .DELAY_SAMPLES(2000),        // ? 43 ms delay at 46 kHz
+        .FEEDBACK_SHIFT(2)           // 25% feedback
+    ) u_echo (
+        .clk(clk),
+        .sample_en(xadc_drdy),       // update on every new ADC sample
+        .sample_in(adc_value),
+        .sample_out(echo_sample)
+    );
+
+    // ============================================================
+    // 4. Scale 12-bit ADC (0-4095) to 0-999 for display
+    // ============================================================
     logic [9:0] scaled_value;
 
     always_comb begin
@@ -69,7 +83,7 @@ module top(
     end
 
     // ============================================================
-    // 4. Convert to BCD (3 digits)
+    // 5. Convert to BCD (3 digits)
     // ============================================================
     logic [3:0] hundreds, tens, ones;
 
@@ -80,7 +94,7 @@ module top(
     end
 
     // ============================================================
-    // 5. Seven Segment Multiplexing (1 kHz)
+    // 6. Seven Segment Multiplexing (1 kHz)
     // ============================================================
     logic [16:0] refresh_cnt;
     logic [1:0]  digit_select;
@@ -88,14 +102,14 @@ module top(
     always_ff @(posedge clk)
         refresh_cnt <= refresh_cnt + 1;
 
-    assign digit_select = refresh_cnt[16:15]; // slow selection
+    assign digit_select = refresh_cnt[16:15];
 
     logic [3:0] current_digit;
 
     always_comb begin
         case (digit_select)
             2'b00: begin
-                an = 4'b1110;  // digit 0 ON
+                an = 4'b1110;
                 current_digit = ones;
             end
             2'b01: begin
@@ -107,14 +121,14 @@ module top(
                 current_digit = hundreds;
             end
             default: begin
-                an = 4'b0111;      // unused digit
+                an = 4'b0111;
                 current_digit = 4'd0;
             end
         endcase
     end
 
     // ============================================================
-    // 6. Segment Decoder (HEX to Seven-Segment)
+    // 7. Segment Decoder
     // ============================================================
     always_comb begin
         case (current_digit)
@@ -128,9 +142,32 @@ module top(
             4'h7: seg = 7'b1111000;
             4'h8: seg = 7'b0000000;
             4'h9: seg = 7'b0010000;
-            default: seg = 7'b1111111; // blank
+            default: seg = 7'b1111111;
         endcase
     end
 
-endmodule
+    // ============================================================
+    // 8. ILA PROBES
+    // ============================================================
+        logic [11:0] ila_probe0; // adc_value
+        logic        ila_probe1; // xadc_drdy
+        logic [9:0]  ila_probe2; // scaled_value
+        logic [1:0]  ila_probe3; // digit_select
+        logic [11:0] ila_probe4; // echo sample
+    
+        assign ila_probe0 = adc_value;
+        assign ila_probe1 = xadc_drdy;
+        assign ila_probe2 = scaled_value;
+        assign ila_probe3 = digit_select;
+        assign ila_probe4 = echo_sample;
+    
+        ila_dsp my_ila (
+            .clk(clk),
+            .probe0(ila_probe0),
+            .probe1(ila_probe1),
+            .probe2(ila_probe2),
+            .probe3(ila_probe3),
+            .probe4(ila_probe4)
+        );
 
+endmodule
